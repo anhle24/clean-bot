@@ -22,6 +22,8 @@ def keep_alive():
 # --- Discord Bot Setup ---
 TOKEN = os.getenv('DISCORD_TOKEN')  # Đảm bảo set biến môi trường trên Render
 
+GUILD_ID = 1388137676900663347  # ✅ GUILD ID đã điền để sync lệnh slash ngay
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -75,8 +77,8 @@ async def clear_all(interaction: discord.Interaction):
 # --- On Bot Ready ---
 @client.event
 async def on_ready():
-    await tree.sync()
-    print(f"✅ Bot đã sẵn sàng với tên {client.user}")
+    await tree.sync(guild=discord.Object(id=GUILD_ID))
+    print(f"✅ Slash command đã được sync cho server {GUILD_ID} với tên {client.user}")
 
 # --- Run bot ---
 keep_alive()
