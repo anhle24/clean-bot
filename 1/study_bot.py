@@ -20,9 +20,9 @@ def keep_alive():
     t.start()
 
 # --- Discord Bot Setup ---
-TOKEN = os.getenv('DISCORD_TOKEN')  # Đảm bảo set biến môi trường trên Render
+TOKEN = os.getenv('DISCORD_TOKEN')  # Đảm bảo đã set biến môi trường trên Render
 
-GUILD_ID = 1388137676900663347  # ✅ GUILD ID đã điền để sync lệnh slash ngay
+GUILD_ID = 1388137676900663347  # ✅ GUILD thực tế bạn cung cấp
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,8 +32,12 @@ intents.members = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# --- Slash Command: /clear_all ---
-@tree.command(name="clear_all", description="Xoá toàn bộ tin nhắn trong kênh hiện tại")
+# --- Slash Command: /clear_all (sync trực tiếp theo guild) ---
+@tree.command(
+    name="clear_all",
+    description="Xoá toàn bộ tin nhắn trong kênh hiện tại",
+    guild=discord.Object(id=GUILD_ID)
+)
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear_all(interaction: discord.Interaction):
     if not interaction.guild:
@@ -79,6 +83,9 @@ async def clear_all(interaction: discord.Interaction):
 async def on_ready():
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ Slash command đã được sync cho server {GUILD_ID} với tên {client.user}")
+    print("🔍 Bot đang kết nối với các server:")
+    for g in client.guilds:
+        print(f"- {g.name} ({g.id})")
 
 # --- Run bot ---
 keep_alive()
