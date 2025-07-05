@@ -1,72 +1,83 @@
 import discord
-from discord.ext import commands
 from discord import app_commands
-from datetime import datetime, timedelta, timezone
-import json
+from discord.ui import View, Button
+from flask import Flask
+from threading import Thread
 import os
 
-TOKEN = os.environ['TOKEN']
+# --- Flask app to keep bot alive ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- Discord Bot Setup ---
+TOKEN = os.getenv('DISCORD_TOKEN')  # Đảm bảo set biến môi trường trên Render
 
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix='/', intents=intents)
-tree = bot.tree
+intents.message_content = True
+intents.guilds = True
+intents.members = True
 
-DATA_FILE = 'checkin_data.json'
-vn_tz = timezone(timedelta(hours=7))
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_data(data):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
-
-@tree.command(name="in", description="Điểm danh bắt đầu học 📚")
-async def checkin(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    now = datetime.now(vn_tz)
-    today = now.strftime("%Y-%m-%d")
-
-    data = load_data()
-    if user_id not in data:
-        data[user_id] = {}
-    if today in data[user_id] and "checkin" in data[user_id][today]:
-        await interaction.response.send_message("⚠️ Bạn đã điểm danh rồi hôm nay!")
+# --- Slash Command: /clear_all ---
+@tree.command(name="clear_all", description="Xoá toàn bộ tin nhắn trong kênh hiện tại")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear_all(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Lệnh này chỉ hoạt động trong server.", ephemeral=True)
         return
 
-    data[user_id][today] = {"checkin": now.isoformat()}
-    save_data(data)
+    class ConfirmView(View):
+        def __init__(self):
+            super().__init__(timeout=15)
+            self.value = None
 
-    time_str = now.strftime("%I:%M %p")
-    await interaction.response.send_message(f"✅ Đã bắt đầu học lúc {time_str} 🥰")
+        @discord.ui.button(label="✅ Xác nhận xoá", style=discord.ButtonStyle.danger)
+        async def confirm(self, interaction_button: discord.Interaction, button: Button):
+            self.value = True
+            await interaction_button.response.edit_message(content="⏳ Đang xoá tin nhắn...", view=None)
+            self.stop()
 
-@tree.command(name="out", description="Kết thúc giờ học 🎓")
-async def checkout(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    now = datetime.now(vn_tz)
-    today = now.strftime("%Y-%m-%d")
+        @discord.ui.button(label="❌ Huỷ", style=discord.ButtonStyle.secondary)
+        async def cancel(self, interaction_button: discord.Interaction, button: Button):
+            self.value = False
+            await interaction_button.response.edit_message(content="❌ Đã huỷ xoá tin nhắn.", view=None)
+            self.stop()
 
-    data = load_data()
-    if user_id not in data or today not in data[user_id] or "checkin" not in data[user_id][today]:
-        await interaction.response.send_message("⚠️ Bạn chưa điểm danh hôm nay!")
-        return
+    view = ConfirmView()
+    await interaction.response.send_message(
+        "⚠️ Bạn có chắc muốn xoá **toàn bộ tin nhắn** trong kênh này không?",
+        view=view,
+        ephemeral=True
+    )
+    await view.wait()
 
-    if "checkout" in data[user_id][today]:
-        await interaction.response.send_message("⚠️ Bạn đã kết thúc phiên học rồi!")
-        return
+    if view.value:
+        try:
+            deleted = await interaction.channel.purge(limit=1000)
+            await interaction.followup.send(f"✅ Đã xoá **{len(deleted)}** tin nhắn trong <#{interaction.channel.id}>.", ephemeral=False)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Lỗi khi xoá tin nhắn: `{e}`", ephemeral=True)
+    elif view.value is None:
+        await interaction.followup.send("⌛ Hết thời gian xác nhận. Lệnh đã bị huỷ.", ephemeral=True)
 
-    data[user_id][today]["checkout"] = now.isoformat()
-    save_data(data)
-
-    time_str = now.strftime("%I:%M %p")
-    await interaction.response.send_message(f"✅ Đã kết thúc giờ học vào lúc {time_str} 🥳")
-
-@bot.event
+# --- On Bot Ready ---
+@client.event
 async def on_ready():
     await tree.sync()
-    print(f"✅ Bot đã sẵn sàng dưới tên {bot.user}!")
+    print(f"✅ Bot đã sẵn sàng với tên {client.user}")
 
-bot.run(TOKEN)
+# --- Run bot ---
+keep_alive()
+client.run(TOKEN)
