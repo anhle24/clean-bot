@@ -21,8 +21,7 @@ def keep_alive():
 
 # --- Discord Bot Setup ---
 TOKEN = os.getenv('DISCORD_TOKEN')  # Đảm bảo đã set biến môi trường trên Render
-
-GUILD_ID = 1388137676900663347  # ✅ GUILD thực tế bạn cung cấp
+GUILD_ID = 1388137676900663347      # ✅ GUILD thực tế bạn cung cấp
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -32,7 +31,7 @@ intents.members = True
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
-# --- Slash Command: /clear_all (sync trực tiếp theo guild) ---
+# --- Slash Command: /clear_all ---
 @tree.command(
     name="clear_all",
     description="Xoá toàn bộ tin nhắn trong kênh hiện tại",
@@ -40,52 +39,59 @@ tree = app_commands.CommandTree(client)
 )
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear_all(interaction: discord.Interaction):
-    if not interaction.guild:
-        await interaction.response.send_message("❌ Lệnh này chỉ hoạt động trong server.", ephemeral=True)
-        return
+    try:
+        if not interaction.guild:
+            await interaction.response.send_message("❌ Lệnh này chỉ hoạt động trong server.", ephemeral=True)
+            return
 
-    class ConfirmView(View):
-        def __init__(self):
-            super().__init__(timeout=15)
-            self.value = None
+        class ConfirmView(View):
+            def __init__(self):
+                super().__init__(timeout=15)
+                self.value = None
 
-        @discord.ui.button(label="✅ Xác nhận xoá", style=discord.ButtonStyle.danger)
-        async def confirm(self, interaction_button: discord.Interaction, button: Button):
-            self.value = True
-            await interaction_button.response.edit_message(content="⏳ Đang xoá tin nhắn...", view=None)
-            self.stop()
+            @discord.ui.button(label="✅ Xác nhận xoá", style=discord.ButtonStyle.danger)
+            async def confirm(self, interaction_button: discord.Interaction, button: Button):
+                self.value = True
+                await interaction_button.response.edit_message(content="⏳ Đang xoá tin nhắn...", view=None)
+                self.stop()
 
-        @discord.ui.button(label="❌ Huỷ", style=discord.ButtonStyle.secondary)
-        async def cancel(self, interaction_button: discord.Interaction, button: Button):
-            self.value = False
-            await interaction_button.response.edit_message(content="❌ Đã huỷ xoá tin nhắn.", view=None)
-            self.stop()
+            @discord.ui.button(label="❌ Huỷ", style=discord.ButtonStyle.secondary)
+            async def cancel(self, interaction_button: discord.Interaction, button: Button):
+                self.value = False
+                await interaction_button.response.edit_message(content="❌ Đã huỷ xoá tin nhắn.", view=None)
+                self.stop()
 
-    view = ConfirmView()
-    await interaction.response.send_message(
-        "⚠️ Bạn có chắc muốn xoá **toàn bộ tin nhắn** trong kênh này không?",
-        view=view,
-        ephemeral=True
-    )
-    await view.wait()
+        view = ConfirmView()
+        await interaction.response.send_message(
+            "⚠️ Bạn có chắc muốn xoá **toàn bộ tin nhắn** trong kênh này không?",
+            view=view,
+            ephemeral=True
+        )
+        await view.wait()
 
-    if view.value:
-        try:
-            deleted = await interaction.channel.purge(limit=1000)
-            await interaction.followup.send(f"✅ Đã xoá **{len(deleted)}** tin nhắn trong <#{interaction.channel.id}>.", ephemeral=False)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Lỗi khi xoá tin nhắn: `{e}`", ephemeral=True)
-    elif view.value is None:
-        await interaction.followup.send("⌛ Hết thời gian xác nhận. Lệnh đã bị huỷ.", ephemeral=True)
+        if view.value:
+            try:
+                deleted = await interaction.channel.purge(limit=1000)
+                await interaction.followup.send(f"✅ Đã xoá **{len(deleted)}** tin nhắn trong <#{interaction.channel.id}>.", ephemeral=False)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Lỗi khi xoá tin nhắn: `{e}`", ephemeral=True)
+        elif view.value is None:
+            await interaction.followup.send("⌛ Hết thời gian xác nhận. Lệnh đã bị huỷ.", ephemeral=True)
+    except Exception as e:
+        print("[LỖI /clear_all]", e)
+        await interaction.response.send_message("❌ Có lỗi xảy ra khi thực thi lệnh này.", ephemeral=True)
 
 # --- On Bot Ready ---
 @client.event
 async def on_ready():
-    await tree.sync(guild=discord.Object(id=GUILD_ID))
-    print(f"✅ Slash command đã được sync cho server {GUILD_ID} với tên {client.user}")
-    print("🔍 Bot đang kết nối với các server:")
-    for g in client.guilds:
-        print(f"- {g.name} ({g.id})")
+    try:
+        await tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"✅ Slash command đã được sync cho server {GUILD_ID} với tên {client.user}")
+        print("🔍 Bot đang kết nối với các server:")
+        for g in client.guilds:
+            print(f"- {g.name} ({g.id})")
+    except Exception as e:
+        print(f"❌ Lỗi khi sync slash commands: {e}")
 
 # --- Run bot ---
 keep_alive()
